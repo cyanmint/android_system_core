@@ -1,13 +1,12 @@
 name: Build init (arm64, Soong)
 
-# Builds the real `init_first_stage` and `init_second_stage` Soong targets
-# (system/core/init/Android.bp) as arm64 binaries, using an AOSP source tree synced with `repo`
-# and built with Soong/Kati, exactly like a real device's init would be built.
+# Builds the real `init` Soong target (system/core/init/Android.bp) as an arm64 binary, using an
+# AOSP source tree synced with `repo` and built with Soong/Kati, exactly like a real device's init
+# would be built.
 #
-# `init_first_stage` is a `static_executable` (fully statically linked, since it runs before any
-# shared libraries are available). `init_second_stage` is the normal, dynamically linked init that
-# replaces it once /system is mounted, so it links against libc/libbase/etc. like any other device
-# binary; it is intentionally *not* static.
+# `init` is a single `static_executable` (fully statically linked) that is installed to
+# /system/bin/init and handles both pre-/system-mount and post-mount duties itself, based on how
+# it is invoked. There is no separate init_first_stage/init_second_stage split.
 #
 # Since Soong analyzes the whole synced source tree, this cannot just sync `system/core` in
 # isolation: it needs the rest of the platform build system, the toolchain prebuilts, and every
@@ -38,10 +37,13 @@ env:
   AOSP_MANIFEST_URL: https://android.googlesource.com/platform/manifest
   AOSP_BRANCH: android-15.0.0_r36
   AOSP_ROOT: ${{ github.workspace }}/aosp
-  LUNCH_TARGET: aosp_arm64-userdebug
-  # Only the projects init_first_stage/init_second_stage transitively need: build system +
-  # toolchain prebuilts, bionic, the platform libraries linked into init, and a generic arm64
-  # product config to `lunch`. This is a small subset of the full AOSP manifest (~1000+ projects).
+  # Newer AOSP branches require the 3-part `<product>-<release>-<variant>` lunch combo form;
+  # `aosp_current` is the generic release config name documented for release branches where the
+  # release-specific config name isn't otherwise needed.
+  LUNCH_TARGET: aosp_arm64-aosp_current-userdebug
+  # Only the projects `init` transitively needs: build system + toolchain prebuilts, bionic, the
+  # platform libraries linked into init, and a generic arm64 product config to `lunch`. This is a
+  # small subset of the full AOSP manifest (~1000+ projects).
   MINIMAL_PROJECTS: >-
     build/make
     build/soong
@@ -91,7 +93,7 @@ env:
 
 jobs:
   build:
-    name: Build init_first_stage + init_second_stage (arm64)
+    name: Build init (arm64)
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
@@ -150,48 +152,35 @@ jobs:
           mkdir -p "${AOSP_ROOT}/system/core"
           rsync -a --exclude='.git' "${{ github.workspace }}/system_core_src/" "${AOSP_ROOT}/system/core/"
 
-      - name: Build init_first_stage and init_second_stage with Soong
+      - name: Build init with Soong
         run: |
           cd "${AOSP_ROOT}"
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
           lunch "${LUNCH_TARGET}"
-          m init_first_stage init_second_stage -j"$(nproc)"
+          m init -j"$(nproc)"
 
-      - name: Locate and verify the built arm64 binaries
+      - name: Locate and verify the built arm64 binary
         run: |
           cd "${AOSP_ROOT}"
-          FIRST_STAGE_BIN="$(find out/soong/.intermediates/system/core/init/init_first_stage \
-            -type f -name init_first_stage | head -n1)"
-          SECOND_STAGE_BIN="$(find out/soong/.intermediates/system/core/init/init_second_stage \
-            -type f -name init_second_stage | head -n1)"
+          INIT_BIN="$(find out/soong/.intermediates/system/core/init/init \
+            -type f -name init | head -n1)"
 
-          if [ -z "${FIRST_STAGE_BIN}" ]; then
-            echo "Could not locate the built init_first_stage binary under out/" >&2
-            exit 1
-          fi
-          if [ -z "${SECOND_STAGE_BIN}" ]; then
-            echo "Could not locate the built init_second_stage binary under out/" >&2
+          if [ -z "${INIT_BIN}" ]; then
+            echo "Could not locate the built init binary under out/" >&2
             exit 1
           fi
 
-          echo "FIRST_STAGE_BIN=${FIRST_STAGE_BIN}" >> "${GITHUB_ENV}"
-          echo "SECOND_STAGE_BIN=${SECOND_STAGE_BIN}" >> "${GITHUB_ENV}"
+          echo "INIT_BIN=${INIT_BIN}" >> "${GITHUB_ENV}"
 
-          echo "== init_first_stage (must be static) =="
-          file "${FIRST_STAGE_BIN}"
-          file "${FIRST_STAGE_BIN}" | grep -q "ARM aarch64"
-          file "${FIRST_STAGE_BIN}" | grep -qi "statically linked"
-
-          echo "== init_second_stage (dynamically linked, like a real device init) =="
-          file "${SECOND_STAGE_BIN}"
-          file "${SECOND_STAGE_BIN}" | grep -q "ARM aarch64"
-          file "${SECOND_STAGE_BIN}" | grep -qi "dynamically linked"
+          echo "== init (must be a single static /system/bin/init binary) =="
+          file "${INIT_BIN}"
+          file "${INIT_BIN}" | grep -q "ARM aarch64"
+          file "${INIT_BIN}" | grep -qi "statically linked"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: init-arm64
           path: |
-            ${{ env.FIRST_STAGE_BIN }}
-            ${{ env.SECOND_STAGE_BIN }}
+            ${{ env.INIT_BIN }}
