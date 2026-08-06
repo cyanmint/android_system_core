@@ -18,6 +18,9 @@ on:
       - ".github/workflows/build-init-arm64.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build init-arm64-standalone
