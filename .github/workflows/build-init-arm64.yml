@@ -18,15 +18,13 @@ name: Build init (arm64, Soong)
 # Runner setup (disk cleanup, swap space, repo/build environment) is modeled after
 # https://github.com/carlodandan/OrangeFox-Action-Builder, adapted for a plain AOSP checkout
 # instead of a recovery-project manifest.
+# Note: no `paths` filter is used here. Since Soong analyzes the whole synced source tree and this
+# repository's checked-out contents are swapped in wholesale for the synced `system/core` project
+# (see above), a change to *any* file in this repository (not just `init/**`) can affect whether
+# the build succeeds, so every push/pull_request should trigger this workflow.
 on:
   push:
-    paths:
-      - "init/**"
-      - ".github/workflows/build-init-arm64.yml"
   pull_request:
-    paths:
-      - "init/**"
-      - ".github/workflows/build-init-arm64.yml"
   workflow_dispatch:
 
 permissions:
