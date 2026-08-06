@@ -163,8 +163,11 @@ jobs:
       - name: Locate and verify the built arm64 binary
         run: |
           cd "${AOSP_ROOT}"
-          INIT_BIN="$(find out/soong/.intermediates/system/core/init/init \
-            -type f -name init | head -n1)"
+          INIT_BIN="$(find out/target/product -path '*/system/bin/init' -type f 2>/dev/null | head -n1)"
+          if [ -z "${INIT_BIN}" ]; then
+            INIT_BIN="$(find out/soong/.intermediates/system/core/init/init \
+              -type f -name init | head -n1)"
+          fi
 
           if [ -z "${INIT_BIN}" ]; then
             echo "Could not locate the built init binary under out/" >&2
