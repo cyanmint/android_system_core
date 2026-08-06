@@ -28,6 +28,7 @@ on:
       - "init/**"
       - ".github/workflows/build-init-arm64.yml"
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
