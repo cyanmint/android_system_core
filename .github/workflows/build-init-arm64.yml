@@ -1,12 +1,19 @@
-name: Build init (arm64, static, NDK)
+name: Build init (arm64, static, Soong)
 
-# Builds a reduced, self-contained subset of init's .rc parsing/action-engine sources
-# (init/standalone/) as a statically linked arm64-v8a binary using the Android NDK toolchain.
+# Builds the real `init_first_stage` Soong target (system/core/init/Android.bp) as a statically
+# linked arm64 binary, using an AOSP source tree synced with `repo` and built with Soong/Kati,
+# exactly like a real device's init would be built.
 #
-# This does NOT build the real device `init` binary: doing so requires the full AOSP source
-# tree and Soong build system (libselinux, libavb, libsnapshot, protobuf, aconfig-generated
-# flags, apex handling, etc. are unavailable outside of it). See init/standalone/README for the
-# scope and limitations of this build.
+# Since Soong analyzes the whole synced source tree, this cannot just sync `system/core` in
+# isolation: it needs the rest of the platform build system, the toolchain prebuilts, and every
+# AOSP project that `init_first_stage` (transitively) depends on. To keep the sync small, `repo
+# sync` is only pointed at that curated list of projects below instead of the full ~1000-project
+# AOSP manifest. The checked-out contents of this repository are then swapped in for the synced
+# `system/core` project, so the build actually compiles *this* repository's init sources.
+#
+# Runner setup (disk cleanup, swap space, repo/build environment) is modeled after
+# https://github.com/carlodandan/OrangeFox-Action-Builder, adapted for a plain AOSP checkout
+# instead of a recovery-project manifest.
 on:
   push:
     paths:
@@ -21,51 +28,144 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned AOSP release tag for reproducibility.
+  AOSP_MANIFEST_URL: https://android.googlesource.com/platform/manifest
+  AOSP_BRANCH: android-15.0.0_r36
+  AOSP_ROOT: ${{ github.workspace }}/aosp
+  LUNCH_TARGET: aosp_arm64-userdebug
+  # Only the projects init_first_stage transitively needs: build system + toolchain prebuilts,
+  # bionic, the platform libraries linked into init_first_stage, and a generic arm64 product
+  # config to `lunch`. This is a small subset of the full AOSP manifest (~1000+ projects).
+  MINIMAL_PROJECTS: >-
+    build/make
+    build/soong
+    build/blueprint
+    build/release
+    prebuilts/build-tools
+    prebuilts/clang/host/linux-x86
+    prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8
+    prebuilts/go/linux-x86
+    prebuilts/misc
+    prebuilts/runtime
+    art
+    bionic
+    system/core
+    system/libbase
+    system/logging
+    system/sepolicy
+    system/security
+    system/extras
+    system/unwinding
+    system/apex
+    system/gsid
+    system/libprocinfo
+    system/update_engine
+    bootable/recovery
+    packages/modules/Virtualization
+    external/selinux
+    external/libcap
+    external/libcap-ng
+    external/avb
+    external/boringssl
+    external/protobuf
+    external/lz4
+    external/zlib
+    external/zstd
+    external/lzma
+    external/fmtlib
+    external/jsoncpp
+    external/scudo
+    external/googletest
+    device/generic/arm64
+    device/generic/common
+    device/generic/goldfish
+
 jobs:
   build:
-    name: Build init-arm64-standalone
-    runs-on: ubuntu-latest
+    name: Build init_first_stage (arm64, static)
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
         with:
-          ndk-version: r27c
-          local-cache: true
+          path: system_core_src
 
-      - name: Configure
-        run: |
-          cmake -S init/standalone -B out/init-standalone \
-                -G Ninja \
-                -DCMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
-                -DANDROID_ABI=arm64-v8a \
-                -DANDROID_PLATFORM=android-26 \
-                -DCMAKE_BUILD_TYPE=Release
+      - name: Free up runner disk space
+        uses: rokibhasansagar/slimhub_actions@c2a6e4317d3de2b623ac7395b05e9d2149e8289b
+        continue-on-error: true
 
-      - name: Build
-        run: cmake --build out/init-standalone -j "$(nproc)"
+      - name: Add swap space
+        uses: pierotofy/set-swap-space@fc79b3f67fa8a838184ce84a674ca12238d2c761 # v1.0
+        with:
+          swap-size-gb: 24
 
-      - name: Verify the binary is a static arm64 executable
-        run: |
-          file out/init-standalone/init-arm64-standalone
-          file out/init-standalone/init-arm64-standalone | grep -q "ARM aarch64"
-          file out/init-standalone/init-arm64-standalone | grep -qi "statically linked"
-
-      - name: Smoke test with QEMU user-mode emulation
+      - name: Install AOSP build environment packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static
-          cat > /tmp/sample.rc <<'EOF'
-          on boot
-          on property:sys.boot_completed=1
-          EOF
-          qemu-aarch64-static out/init-standalone/init-arm64-standalone /tmp/sample.rc
+          sudo apt-get install -y --no-install-recommends \
+            git-core gnupg flex bison build-essential zip curl \
+            zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 \
+            lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev \
+            libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig \
+            python3 rsync bc file
+
+      - name: Install repo tool
+        run: |
+          mkdir -p "${HOME}/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "${HOME}/bin/repo"
+          chmod a+x "${HOME}/bin/repo"
+          echo "${HOME}/bin" >> "${GITHUB_PATH}"
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+          git config --global color.ui false
+
+      - name: Init minimal AOSP workspace
+        run: |
+          mkdir -p "${AOSP_ROOT}"
+          cd "${AOSP_ROOT}"
+          repo init -u "${AOSP_MANIFEST_URL}" -b "${AOSP_BRANCH}" \
+            --depth=1 --partial-clone --clone-filter=blob:limit=10M -g all
+
+      - name: Sync only the projects init_first_stage needs
+        run: |
+          cd "${AOSP_ROOT}"
+          repo sync -c -j"$(nproc)" --no-tags --optimized-fetch --prune --force-sync \
+            ${MINIMAL_PROJECTS}
+
+      - name: Overlay this repository as the system/core project
+        run: |
+          rm -rf "${AOSP_ROOT}/system/core"
+          mkdir -p "${AOSP_ROOT}/system/core"
+          rsync -a --exclude='.git' "${{ github.workspace }}/system_core_src/" "${AOSP_ROOT}/system/core/"
+
+      - name: Build init_first_stage with Soong
+        run: |
+          cd "${AOSP_ROOT}"
+          set +e
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          lunch "${LUNCH_TARGET}"
+          set -e
+          m init_first_stage -j"$(nproc)"
+
+      - name: Locate and verify the statically linked arm64 binary
+        run: |
+          cd "${AOSP_ROOT}"
+          BIN="$(find out/target/product -type f -name init -path '*root*' | head -n1)"
+          if [ -z "${BIN}" ]; then
+            BIN="$(find out -type f -name init_first_stage | head -n1)"
+          fi
+          echo "INIT_BIN=${BIN}" >> "${GITHUB_ENV}"
+          file "${BIN}"
+          file "${BIN}" | grep -q "ARM aarch64"
+          file "${BIN}" | grep -qi "statically linked"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: init-arm64-standalone
-          path: out/init-standalone/init-arm64-standalone
+          name: init-arm64-static
+          path: ${{ env.INIT_BIN }}
