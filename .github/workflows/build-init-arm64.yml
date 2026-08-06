@@ -145,19 +145,21 @@ jobs:
       - name: Build init_first_stage with Soong
         run: |
           cd "${AOSP_ROOT}"
-          set +e
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
           lunch "${LUNCH_TARGET}"
-          set -e
           m init_first_stage -j"$(nproc)"
 
       - name: Locate and verify the statically linked arm64 binary
         run: |
           cd "${AOSP_ROOT}"
-          BIN="$(find out/target/product -type f -name init -path '*root*' | head -n1)"
+          BIN="$(find out/target/product -type f -name init_first_stage | head -n1)"
           if [ -z "${BIN}" ]; then
-            BIN="$(find out -type f -name init_first_stage | head -n1)"
+            BIN="$(find out/target/product -type f -name init -path '*root*' | head -n1)"
+          fi
+          if [ -z "${BIN}" ]; then
+            echo "Could not locate the built init_first_stage binary under out/" >&2
+            exit 1
           fi
           echo "INIT_BIN=${BIN}" >> "${GITHUB_ENV}"
           file "${BIN}"
