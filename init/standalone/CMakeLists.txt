@@ -28,13 +28,15 @@ include(FetchContent)
 
 # libbase does not ship its own CMake/Makefile build (it is normally built by Soong), so it is
 # fetched as plain source and compiled directly below.
+# Mirror of https://android.googlesource.com/platform/system/libbase, pinned to a specific
+# Android release tag for reproducible builds.
 FetchContent_Declare(
     libbase
-    GIT_REPOSITORY https://android.googlesource.com/platform/system/libbase
-    GIT_TAG main
+    GIT_REPOSITORY https://github.com/msft-mirror-aosp/platform.system.libbase.git
+    GIT_TAG android-14.0.0_r1
     GIT_SHALLOW TRUE
 )
-FetchContent_Populate(libbase)
+FetchContent_MakeAvailable(libbase)
 
 file(GLOB libbase_sources ${libbase_SOURCE_DIR}/*.cpp)
 list(FILTER libbase_sources EXCLUDE REGEX ".*_test\\.cpp$")
