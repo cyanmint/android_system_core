@@ -89,6 +89,7 @@ env:
     external/libxml2
     external/go-cmp
     external/golang-protobuf
+    external/starlark-go
     device/generic/arm64
     device/generic/common
     device/generic/goldfish
