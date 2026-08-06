@@ -98,6 +98,7 @@ env:
     prebuilts/vndk/v32
     prebuilts/vndk/v33
     prebuilts/vndk/v34
+    toolchain/pgo-profiles
 
 jobs:
   build:
