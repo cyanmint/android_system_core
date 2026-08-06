@@ -1,0 +1,68 @@
+name: Build init (arm64, static, NDK)
+
+# Builds a reduced, self-contained subset of init's .rc parsing/action-engine sources
+# (init/standalone/) as a statically linked arm64-v8a binary using the Android NDK toolchain.
+#
+# This does NOT build the real device `init` binary: doing so requires the full AOSP source
+# tree and Soong build system (libselinux, libavb, libsnapshot, protobuf, aconfig-generated
+# flags, apex handling, etc. are unavailable outside of it). See init/standalone/README for the
+# scope and limitations of this build.
+on:
+  push:
+    paths:
+      - "init/**"
+      - ".github/workflows/build-init-arm64.yml"
+  pull_request:
+    paths:
+      - "init/**"
+      - ".github/workflows/build-init-arm64.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build init-arm64-standalone
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          local-cache: true
+
+      - name: Configure
+        run: |
+          cmake -S init/standalone -B out/init-standalone \
+                -G Ninja \
+                -DCMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
+                -DANDROID_ABI=arm64-v8a \
+                -DANDROID_PLATFORM=android-26 \
+                -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build out/init-standalone -j "$(nproc)"
+
+      - name: Verify the binary is a static arm64 executable
+        run: |
+          file out/init-standalone/init-arm64-standalone
+          file out/init-standalone/init-arm64-standalone | grep -q "ARM aarch64"
+          file out/init-standalone/init-arm64-standalone | grep -qi "statically linked"
+
+      - name: Smoke test with QEMU user-mode emulation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          cat > /tmp/sample.rc <<'EOF'
+          on boot
+          on property:sys.boot_completed=1
+          EOF
+          qemu-aarch64-static out/init-standalone/init-arm64-standalone /tmp/sample.rc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: init-arm64-standalone
+          path: out/init-standalone/init-arm64-standalone
