@@ -186,6 +186,7 @@ jobs:
           echo "== init_second_stage (dynamically linked, like a real device init) =="
           file "${SECOND_STAGE_BIN}"
           file "${SECOND_STAGE_BIN}" | grep -q "ARM aarch64"
+          file "${SECOND_STAGE_BIN}" | grep -qi "dynamically linked"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
