@@ -87,6 +87,8 @@ env:
     external/scudo
     external/googletest
     external/libxml2
+    external/go-cmp
+    external/golang-protobuf
     device/generic/arm64
     device/generic/common
     device/generic/goldfish
