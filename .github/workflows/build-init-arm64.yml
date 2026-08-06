@@ -99,6 +99,7 @@ env:
     prebuilts/vndk/v33
     prebuilts/vndk/v34
     toolchain/pgo-profiles
+    external/spdx-tools
 
 jobs:
   build:
