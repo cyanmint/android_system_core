@@ -20,6 +20,7 @@
 #include "selinux.h"
 #include "subcontext.h"
 #include "ueventd.h"
+#include "util.h"
 
 #include <android-base/logging.h>
 
@@ -64,7 +65,7 @@ int main(int argc, char** argv) {
 
     if (argc > 1) {
         if (!strcmp(argv[1], "subcontext")) {
-            android::base::InitLogging(argv, &android::base::KernelLogger);
+            android::base::InitLogging(argv, &KernelAndConsoleLogger);
             const BuiltinFunctionMap& function_map = GetBuiltinFunctionMap();
 
             return SubcontextMain(argc, argv, &function_map);
