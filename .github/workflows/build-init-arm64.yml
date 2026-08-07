@@ -162,6 +162,18 @@ jobs:
           mkdir -p "${AOSP_ROOT}/system/core"
           rsync -a --exclude='.git' "${{ github.workspace }}/system_core_src/" "${AOSP_ROOT}/system/core/"
 
+      - name: Apply vendored product config workaround
+        # Soong panics analyzing the unrelated "libaconfig_android_hardware_biometrics_rust"
+        # module ("Exactly one aconfig_declarations property required") when building the
+        # aosp_arm64 product against this workflow's minimal/partial AOSP checkout. Overwrite
+        # the synced top-level product config with our vendored copy (a copy of
+        # build/make/target/product/aosp_arm64.mk that additionally strips any default
+        # PRODUCT_PACKAGES pulling in the biometrics HAL/aconfig rust bindings), so Soong never
+        # has to analyze the problematic module. See .github/ci-overrides/aosp_arm64.mk.
+        run: |
+          cp "${{ github.workspace }}/system_core_src/.github/ci-overrides/aosp_arm64.mk" \
+            "${AOSP_ROOT}/build/make/target/product/aosp_arm64.mk"
+
       - name: Build init with Soong
         run: |
           cd "${AOSP_ROOT}"
