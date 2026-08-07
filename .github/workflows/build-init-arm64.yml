@@ -162,17 +162,29 @@ jobs:
           mkdir -p "${AOSP_ROOT}/system/core"
           rsync -a --exclude='.git' "${{ github.workspace }}/system_core_src/" "${AOSP_ROOT}/system/core/"
 
-      - name: Apply vendored product config workaround
-        # Soong panics analyzing the unrelated "libaconfig_android_hardware_biometrics_rust"
-        # module ("Exactly one aconfig_declarations property required") when building the
-        # aosp_arm64 product against this workflow's minimal/partial AOSP checkout. Overwrite
-        # the synced top-level product config with our vendored copy (a copy of
-        # build/make/target/product/aosp_arm64.mk that additionally strips any default
-        # PRODUCT_PACKAGES pulling in the biometrics HAL/aconfig rust bindings), so Soong never
-        # has to analyze the problematic module. See .github/ci-overrides/aosp_arm64.mk.
+      - name: Work around Soong analysis errors unrelated to init
+        # Soong analyzes the whole Blueprint module graph of every synced project up front
+        # (regardless of which packages/products actually request a module), so any broken or
+        # incompatible module definition in this workflow's minimal/partial AOSP checkout fails
+        # the whole build, even though `init` never depends on these modules. Two such issues
+        # are hit here:
+        #
+        # 1. system/security/keystore2/Android.bp's "libaconfig_android_hardware_biometrics_rust"
+        #    rust_aconfig_library references the "android.hardware.biometrics.flags-aconfig"
+        #    aconfig_declarations module, which is defined in hardware/interfaces -- a project
+        #    this workflow intentionally doesn't sync (it's unrelated to init). Soong then panics
+        #    with "Exactly one aconfig_declarations property required". Drop that module and its
+        #    reference from keystore2's rustlibs.
+        # 2. system/apex/apexd/apexd_testdata/Android.bp's "test_service-apexd" java_sdk_library
+        #    is missing its "test" API scope signature file (apis_for_tests/test-current.txt),
+        #    which doesn't exist even in a stock AOSP checkout at this pinned tag. Add a vendored
+        #    stub matching the module's actual (trivial) API surface.
         run: |
-          cp "${{ github.workspace }}/system_core_src/.github/ci-overrides/aosp_arm64.mk" \
-            "${AOSP_ROOT}/build/make/target/product/aosp_arm64.mk"
+          python3 "${{ github.workspace }}/system_core_src/.github/ci-overrides/remove_biometrics_rust_aconfig_module.py" \
+            "${AOSP_ROOT}/system/security/keystore2/Android.bp"
+
+          cp "${{ github.workspace }}/system_core_src/.github/ci-overrides/apexd_testdata-test-current.txt" \
+            "${AOSP_ROOT}/system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt"
 
       - name: Build init with Soong
         run: |
