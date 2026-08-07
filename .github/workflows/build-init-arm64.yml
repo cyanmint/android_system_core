@@ -175,16 +175,19 @@ jobs:
         #    this workflow intentionally doesn't sync (it's unrelated to init). Soong then panics
         #    with "Exactly one aconfig_declarations property required". Drop that module and its
         #    reference from keystore2's rustlibs.
-        # 2. system/apex/apexd/apexd_testdata/Android.bp's "test_service-apexd" java_sdk_library
-        #    is missing its "test" API scope signature file (apis_for_tests/test-current.txt),
-        #    which doesn't exist even in a stock AOSP checkout at this pinned tag. Add a vendored
-        #    stub matching the module's actual (trivial) API surface.
+        # 2. system/apex/apexd/apexd_testdata/Android.bp's "test_framework-apexd" and
+        #    "test_service-apexd" java_sdk_library modules are missing their "test" API scope
+        #    signature files (apis_for_tests/test-current.txt and test-removed.txt), which don't
+        #    exist even in a stock AOSP checkout at this pinned tag. Add vendored stubs matching
+        #    the modules' actual (trivial, nothing-removed) API surface.
         run: |
           python3 "${{ github.workspace }}/system_core_src/.github/ci-overrides/remove_biometrics_rust_aconfig_module.py" \
             "${AOSP_ROOT}/system/security/keystore2/Android.bp"
 
           cp "${{ github.workspace }}/system_core_src/.github/ci-overrides/apexd_testdata-test-current.txt" \
             "${AOSP_ROOT}/system/apex/apexd/apexd_testdata/apis_for_tests/test-current.txt"
+          cp "${{ github.workspace }}/system_core_src/.github/ci-overrides/apexd_testdata-test-removed.txt" \
+            "${AOSP_ROOT}/system/apex/apexd/apexd_testdata/apis_for_tests/test-removed.txt"
 
       - name: Build init with Soong
         run: |
