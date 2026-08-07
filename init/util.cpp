@@ -664,9 +664,18 @@ void SetStdioToDevNull(char** argv) {
     if (fd > STDERR_FILENO) close(fd);
 }
 
+// Logs to both the kernel log and stdout/stderr (the console), so that all init log messages
+// are always visible on the standard console output in addition to their usual destination.
+void KernelAndConsoleLogger(android::base::LogId id, android::base::LogSeverity severity,
+                             const char* tag, const char* file, unsigned int line,
+                             const char* message) {
+    android::base::KernelLogger(id, severity, tag, file, line, message);
+    android::base::StdioLogger(id, severity, tag, file, line, message);
+}
+
 void InitKernelLogging(char** argv) {
     SetFatalRebootTarget();
-    android::base::InitLogging(argv, &android::base::KernelLogger, InitAborter);
+    android::base::InitLogging(argv, &KernelAndConsoleLogger, InitAborter);
 }
 
 bool IsRecoveryMode() {

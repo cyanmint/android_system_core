@@ -527,7 +527,7 @@ int SelinuxKlogCallback(int type, const char* fmt, ...) {
     if (type == SELINUX_AVC) {
         SelinuxAvcLog(buf);
     } else {
-        android::base::KernelLogger(android::base::MAIN, severity, "selinux", nullptr, 0, buf);
+        KernelAndConsoleLogger(android::base::MAIN, severity, "selinux", nullptr, 0, buf);
     }
     return 0;
 }

@@ -135,7 +135,7 @@ libinit_cc_defaults {
         "-Wextra",
         "-Wno-unused-parameter",
         "-Wthread-safety",
-    ],
+    ] + GLOBAL_HWASAN_OPTIONS,
     product_variables: {
         debuggable: {
             cppflags: [
@@ -287,28 +287,20 @@ cc_library_static {
     ],
 }
 
-phony {
+// A single, fully static "init" binary is built and installed to /system/bin/init.
+// It handles first-stage (pre-/system mount) and second-stage duties itself, based on
+// how it is invoked (see main.cpp), so there is no separate init_first_stage/
+// init_second_stage split and no ramdisk-only copy to keep in sync.
+cc_binary {
     name: "init",
-    required: [
-        "init_second_stage",
-    ] + select(product_variable("debuggable"), {
-        true: ["overlay_remounter"],
-        false: [],
-    }),
-}
-
-cc_defaults {
-    name: "init_second_stage_defaults",
     stem: "init",
     defaults: ["init_defaults"],
     srcs: ["main.cpp"],
-    symlinks: ["ueventd"],
-}
-
-cc_binary {
-    name: "init_second_stage",
-    defaults: ["init_second_stage_defaults"],
     static_libs: ["libinit"],
+    static_executable: true,
+    system_shared_libs: [],
+    exclude_shared_libs: ["libdl"],
+    symlinks: ["ueventd"],
     visibility: ["//visibility:any_system_partition"],
     required: [
         "init.rc",
@@ -318,13 +310,22 @@ cc_binary {
         "make_f2fs",
         "mke2fs",
         "sload_f2fs",
-    ],
+        "adb_debug.prop",
+    ] + select(product_variable("debuggable"), {
+        true: ["overlay_remounter"],
+        false: [],
+    }),
 }
 
 cc_binary {
-    name: "init_second_stage.recovery",
-    defaults: ["init_second_stage_defaults"],
+    name: "init.recovery",
+    stem: "init",
+    defaults: ["init_defaults"],
+    srcs: ["main.cpp"],
     static_libs: ["libinit"],
+    static_executable: true,
+    system_shared_libs: [],
+    symlinks: ["ueventd"],
     recovery: true,
     cflags: ["-DRECOVERY"],
     exclude_static_libs: [
@@ -333,6 +334,7 @@ cc_binary {
     exclude_shared_libs: [
         "libbinder",
         "libutils",
+        "libdl",
     ],
     required: [
         "init_recovery.rc",
@@ -345,12 +347,18 @@ cc_binary {
 }
 
 cc_binary {
-    name: "init_second_stage.microdroid",
+    name: "init.microdroid",
+    stem: "init",
     defaults: [
         "avf_build_flags_cc",
-        "init_second_stage_defaults",
+        "init_defaults",
     ],
+    srcs: ["main.cpp"],
     static_libs: ["libinit.microdroid"],
+    static_executable: true,
+    system_shared_libs: [],
+    exclude_shared_libs: ["libdl"],
+    symlinks: ["ueventd"],
     cflags: ["-DMICRODROID=1"],
     cppflags: [
         "-UWORLD_WRITABLE_KMSG",
@@ -360,164 +368,9 @@ cc_binary {
     visibility: ["//packages/modules/Virtualization/build/microdroid"],
 }
 
-soong_config_module_type {
-    name: "init_first_stage_cc_defaults",
-    module_type: "cc_defaults",
-    config_namespace: "ANDROID",
-    bool_variables: ["BOARD_USES_RECOVERY_AS_BOOT"],
-    properties: ["no_full_install"],
-}
-
-// Do not install init_first_stage even with mma if we're system-as-root.
-// Otherwise, it will overwrite the symlink.
-init_first_stage_cc_defaults {
-    name: "init_first_stage_defaults",
-    soong_config_variables: {
-        BOARD_USES_RECOVERY_AS_BOOT: {
-            no_full_install: true,
-        },
-    },
-
-    stem: "init",
-
-    srcs: [
-        "block_dev_initializer.cpp",
-        "devices.cpp",
-        "first_stage_console.cpp",
-        "first_stage_init.cpp",
-        "first_stage_main.cpp",
-        "first_stage_mount.cpp",
-        "reboot_utils.cpp",
-        "selabel.cpp",
-        "service_utils.cpp",
-        "snapuserd_transition.cpp",
-        "switch_root.cpp",
-        "uevent_listener.cpp",
-        "util.cpp",
-    ],
-
-    static_libs: [
-        "libapexd_flags",
-        "libfs_avb",
-        "libavf_cc_flags",
-        "libfs_mgr",
-        "libfec",
-        "libfec_rs",
-        "libsquashfs_utils",
-        "libcrypto_utils",
-        "libavb",
-        "liblp",
-        "libcutils",
-        "libbase",
-        "liblog",
-        "libcrypto_static",
-        "libselinux",
-        "libcap",
-        "libgsi",
-        "liblzma",
-        "libunwindstack_no_dex",
-        "libmodprobe",
-        "libext2_uuid",
-        "libprotobuf-cpp-lite",
-        "libsnapshot_cow",
-        "liblz4",
-        "libzstd",
-        "libsnapshot_init",
-        "update_metadata-protos",
-        "libprocinfo",
-        "libbootloader_message",
-    ],
-
-    static_executable: true,
-    system_shared_libs: [],
-
-    cflags: [
-        "-Wall",
-        "-Wextra",
-        "-Wno-unused-parameter",
-        "-Wexit-time-destructors",
-        "-Werror",
-        "-DALLOW_FIRST_STAGE_CONSOLE=0",
-        "-DALLOW_LOCAL_PROP_OVERRIDE=0",
-        "-DALLOW_PERMISSIVE_SELINUX=0",
-        "-DREBOOT_BOOTLOADER_ON_PANIC=0",
-        "-DWORLD_WRITABLE_KMSG=0",
-        "-DDUMP_ON_UMOUNT_FAILURE=0",
-        "-DSHUTDOWN_ZERO_TIMEOUT=0",
-        "-DLOG_UEVENTS=0",
-        "-DSEPOLICY_VERSION=30", // TODO(jiyong): externalize the version number
-    ] + GLOBAL_HWASAN_OPTIONS,
-
-    product_variables: {
-        debuggable: {
-            cflags: [
-                "-UALLOW_FIRST_STAGE_CONSOLE",
-                "-DALLOW_FIRST_STAGE_CONSOLE=1",
-
-                "-UALLOW_LOCAL_PROP_OVERRIDE",
-                "-DALLOW_LOCAL_PROP_OVERRIDE=1",
-
-                "-UALLOW_PERMISSIVE_SELINUX",
-                "-DALLOW_PERMISSIVE_SELINUX=1",
-
-                "-UREBOOT_BOOTLOADER_ON_PANIC",
-                "-DREBOOT_BOOTLOADER_ON_PANIC=1",
-
-                "-UWORLD_WRITABLE_KMSG",
-                "-DWORLD_WRITABLE_KMSG=1",
-
-                "-UDUMP_ON_UMOUNT_FAILURE",
-                "-DDUMP_ON_UMOUNT_FAILURE=1",
-            ],
-        },
-
-        eng: {
-            cflags: [
-                "-USHUTDOWN_ZERO_TIMEOUT",
-                "-DSHUTDOWN_ZERO_TIMEOUT=1",
-            ],
-        },
-    },
-
-    sanitize: {
-        misc_undefined: ["signed-integer-overflow"],
-
-        // First stage init is weird: it may start without stdout/stderr, and no /proc.
-        hwaddress: false,
-        memtag_stack: false,
-    },
-
-    // Install adb_debug.prop into debug ramdisk.
-    // This allows adb root on a user build, when debug ramdisk is used.
-    required: ["adb_debug.prop"],
-
-    ramdisk: true,
-
-    install_in_root: true,
-}
-
-cc_binary {
-    name: "init_first_stage",
-    defaults: ["init_first_stage_defaults"],
-}
-
-cc_binary {
-    name: "init_first_stage.microdroid",
-    defaults: [
-        "avf_build_flags_cc",
-        "init_first_stage_defaults",
-    ],
-    cflags: [
-        "-DMICRODROID=1",
-        "-UWORLD_WRITABLE_KMSG",
-        "-DWORLD_WRITABLE_KMSG=1",
-    ],
-    no_full_install: true,
-}
-
 phony {
     name: "init_system",
-    required: ["init_second_stage"],
+    required: ["init"],
 }
 
 // Tests
@@ -725,10 +578,7 @@ sh_binary {
 
 phony {
     name: "init_vendor",
-    required: select(soong_config_variable("ANDROID", "BOARD_USES_RECOVERY_AS_BOOT"), {
-        true: [],
-        default: ["init_first_stage"],
-    }),
+    required: ["init"],
 }
 
 aconfig_declarations {

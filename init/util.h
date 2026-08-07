@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <android-base/chrono_utils.h>
+#include <android-base/logging.h>
 
 #include "fscrypt_init_extensions.h"
 #include "result.h"
@@ -95,6 +96,9 @@ Result<std::string> ParseUmountAll(const std::vector<std::string>& args);
 
 void SetStdioToDevNull(char** argv);
 void InitKernelLogging(char** argv);
+void KernelAndConsoleLogger(android::base::LogId id, android::base::LogSeverity severity,
+                             const char* tag, const char* file, unsigned int line,
+                             const char* message);
 bool IsRecoveryMode();
 
 bool IsDefaultMountNamespaceReady();

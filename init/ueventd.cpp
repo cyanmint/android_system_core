@@ -204,7 +204,7 @@ int ueventd_main(int argc, char** argv) {
      */
     umask(000);
 
-    android::base::InitLogging(argv, &android::base::KernelLogger);
+    android::base::InitLogging(argv, &KernelAndConsoleLogger);
 
     LOG(INFO) << "ueventd started!";
 
