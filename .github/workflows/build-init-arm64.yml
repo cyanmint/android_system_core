@@ -91,6 +91,7 @@ env:
     device/generic/arm64
     device/generic/common
     device/generic/goldfish
+    device/generic/goldfish-opengl
     prebuilts/vndk/v30
     prebuilts/vndk/v31
     prebuilts/vndk/v32
