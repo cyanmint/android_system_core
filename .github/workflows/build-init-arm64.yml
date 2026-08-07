@@ -53,7 +53,6 @@ env:
     prebuilts/go/linux-x86
     prebuilts/misc
     prebuilts/runtime
-    art
     bionic
     system/core
     system/libbase
@@ -69,7 +68,6 @@ env:
     system/memory/lmkd
     system/tools/mkbootimg
     bootable/recovery
-    packages/modules/Virtualization
     external/selinux
     external/libcap
     external/libcap-ng
