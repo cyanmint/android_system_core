@@ -191,6 +191,14 @@ jobs:
           cd "${AOSP_ROOT}"
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
+          # Soong analyzes the whole module graph up front, including androidx.test.orchestrator
+          # and androidx.test.services.test-services (pulled in by the synced
+          # test/app_compat/csuite project). Those AndroidAppImport modules run dexpreopt, which
+          # needs the dex2oatd host tool built from the `art` project -- a project this workflow
+          # intentionally doesn't sync (it's unrelated to init). Without it, Soong panics with
+          # "Failed to lookup dex2oatd dependency" / "interface conversion: interface {} is nil".
+          # WITH_DEXPREOPT=false disables dexpreopt analysis entirely, avoiding the dependency.
+          export WITH_DEXPREOPT=false
           lunch "${LUNCH_TARGET}"
           m init -j"$(nproc)"
 
